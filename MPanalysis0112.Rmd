@@ -1,0 +1,95 @@
+---
+title: "Microplastic Project Analysis"
+author: "Isaac Evans"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, swim tunnel basic plot pre analysis}
+library(car)
+library(tidyverse)
+library(dplyr)
+library(ordinal)
+library(magrittr)
+library(readxl)
+Swim_Tunnel_data <- read_excel("C:/Users/fibdi/Downloads/Swim Tunnel data.xlsx")
+
+Treatment_Type <- c(Swim_Tunnel_data$`Treatment Type`)
+Time_In_Seconds <- c(Swim_Tunnel_data$`Time in seconds`)
+ggplot(Swim_Tunnel_data, aes(x=Treatment_Type, y=Time_In_Seconds)) + 
+geom_bar(stat = "identity")
+ ## Figure shows treatments all have higher time spent swimming than control ##
+ ## however, time is highly non-normalized ##
+avg_Time <- mean(Time_In_Seconds)
+
+ggplot(Swim_Tunnel_data, aes(x = `Treatment Type`, y = `avg_Time`)) + geom_line(stat = "identity")
+```
+
+```{r statistical analyses of mp swim data}
+##ANOVA test
+Swim_Tunnel_data$`Length (cm)` <- (Swim_Tunnel_data$`Length (mm)`)/10
+fulton <- 100*((Swim_Tunnel_data$`Mass (g)`)/(Swim_Tunnel_data$`Length (cm)`^3))
+Treatment <- (Swim_Tunnel_data$`Treatment Type`)
+variance <- aov(Time_In_Seconds~`Length (cm)`+fulton+Treatment, data = Swim_Tunnel_data)
+summary(variance)
+
+#Generalized Linear Modeling
+aggregate(Time_In_Seconds~Treatment,Swim_Tunnel_data,mean)
+Finish <- as.numeric(Swim_Tunnel_data$`Time in seconds`>= 1800)
+GLM <- glm(Finish~`Length (cm)`+fulton+Treatment,na.action = "na.omit", 
+           family = "binomial", data = Swim_Tunnel_data)
+summary(GLM)
+Anova(GLM)
+boxplot(fulton~Finish,data=Swim_Tunnel_data, xlab = "Finished Endurance Swim Test", ylab = "Fulton Condition Factor") 
+
+##fish with greater fulton condition factor are more likely to complete swim tunnel test ##
+```
+
+```{r poisson distribution swim tunnel}
+## converts max rpm to number of steps completed per 10 rpm, from 40-90 ##
+Swim_Tunnel_data = (Swim_Tunnel_data %>% 
+  mutate(step = (case_when(`max rpm`<= 40 ~ 0,
+                          `max rpm`<= 50 ~ 1,
+                          `max rpm`<= 60 ~ 2,
+                          `max rpm`<= 70 ~ 3,
+                          `max rpm`<= 80 ~ 4,
+                          `max rpm`<= 90 ~ 5))))
+
+pd <- glm(`step`~fulton+Treatment+fulton*Treatment, na.action="na.omit", family = "poisson", data = Swim_Tunnel_data)
+summary(pd)
+Anova(pd, type = "II")
+
+pd1 <- glm(`step` ~ `Length (cm)` + Treatment + fulton + `Length (cm)` * Treatment + fulton * Treatment, na.action = "na.omit", family = "poisson", data = Swim_Tunnel_data)
+Anova(pd1, type = "II")
+
+boxplot(fulton ~ step, data = Swim_Tunnel_data)
+## fulton against step variable per treatment ; needs work #
+
+boxplot(fulton~as.factor(step),data = Swim_Tunnel_data)
+  # shows small positive correlation between fulton condition factor and steps (max rpm) achieved #
+
+ordered_Treatment <- factor(Treatment,levels = c("Control", "Bottle", "Rope", "Mix"))
+
+ggplot(aes(ordered_Treatment,step, fill = Treatment), data = Swim_Tunnel_data) + labs(x = "Treatment Type", y = "Steps Achieved (by Max RPM)", title = "Steps achieved    VS    Microplastic Treatment Type") + geom_boxplot(outlier.colour = "Green") + stat_boxplot(geom = "errorbar") + scale_fill_brewer(palette="Dark2")
+
+  # shows greater amount of steps achieved on average for fish exposed to microplastic #
+
+
+
+```
+
+```{r, microplastic in gut}
+Total_Microplastics <- (Swim_Tunnel_data$`Red Fiber`+Swim_Tunnel_data$`Red Fragment`)
+
+ggplot(data = Swim_Tunnel_data, aes(`ordered_Treatment`, `Total_Microplastics`))+geom_bar(stat = "identity")  
+
+
+  ## figure shows treatments of microplastic create bioaccumulation of MPs in gut of fish##
+```
+
+\`\`\`
